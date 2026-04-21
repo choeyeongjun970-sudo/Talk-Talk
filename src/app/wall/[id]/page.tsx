@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 
 // types
-type WallType = { id: string, title: string, description: string, password?: string, admin_password?: string, created_at: string }
+type WallType = { id: string, title: string, description: string, password?: string, admin_password?: string, profile_image_url?: string, bgm_url?: string, created_at: string }
 type PostitType = { id: string, title: string, nickname?: string, content: string, color: string, created_at: string }
 
 export default function WallPage() {
@@ -34,6 +34,13 @@ export default function WallPage() {
   const [newPassword, setNewPassword] = useState('')
   const [newColor, setNewColor] = useState('yellow')
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Profile Edit Modal States
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
+  const [profileImageFile, setProfileImageFile] = useState<File | null>(null)
+  const [profileBgmUrl, setProfileBgmUrl] = useState('')
+  const [profileAdminPassword, setProfileAdminPassword] = useState('')
+  const [isProfileSubmitting, setIsProfileSubmitting] = useState(false)
 
   // Fetch wall and postits
   useEffect(() => {
@@ -118,6 +125,13 @@ export default function WallPage() {
   const getRotation = (index: number) => {
     const rotations = ['-rotate-2', 'rotate-1', '-rotate-1', 'rotate-2', 'rotate-3', '-rotate-3']
     return rotations[index % rotations.length]
+  }
+
+  const getYouTubeId = (url: string) => {
+    if (!url) return null;
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
   }
 
   const handleOpenCreateModal = () => {
@@ -224,6 +238,60 @@ export default function WallPage() {
     }
   }
 
+  const handleUpdateProfileImage = async (e: React.FormEvent, isDelete: boolean = false) => {
+    e.preventDefault()
+    if (!wall) return
+    if (!profileAdminPassword) {
+      alert('방장 비밀번호를 입력해주세요.')
+      return
+    }
+
+    if (wall.admin_password && wall.admin_password !== profileAdminPassword) {
+      alert('방장 비밀번호가 일치하지 않습니다.')
+      return
+    }
+
+    setIsProfileSubmitting(true)
+
+    let newProfileUrl = wall.profile_image_url || null
+
+    if (isDelete) {
+      newProfileUrl = null
+    } else if (profileImageFile) {
+      const fileExt = profileImageFile.name.split('.').pop()
+      const fileName = `${Math.random()}.${fileExt}`
+      const filePath = `profile_${Date.now()}_${fileName}`
+
+      const { error: uploadError } = await supabase.storage.from('walls').upload(filePath, profileImageFile)
+      if (!uploadError) {
+        const { data: { publicUrl } } = supabase.storage.from('walls').getPublicUrl(filePath)
+        newProfileUrl = publicUrl
+      } else {
+        alert('이미지 업로드에 실패했습니다.')
+        setIsProfileSubmitting(false)
+        return
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('walls')
+      .update({ profile_image_url: newProfileUrl, bgm_url: profileBgmUrl || null })
+      .eq('id', wallId)
+      .select()
+      
+    if (error || !data || data.length === 0) {
+      alert('프로필 변경에 실패했습니다. DB 접근 권한(RLS) 설정을 확인해주세요!')
+    } else {
+      setWall({ ...wall, profile_image_url: newProfileUrl, bgm_url: profileBgmUrl || '' })
+      setIsProfileModalOpen(false)
+      setProfileImageFile(null)
+      setProfileAdminPassword('')
+      alert(isDelete ? '프로필 사진이 삭제되었습니다! 🐣' : '홈피 설정이 멋지게 변경되었습니다! 📸')
+    }
+    
+    setIsProfileSubmitting(false)
+  }
+
   if (isLoading) return <div className="min-h-screen bg-[#FDF8F5] flex items-center justify-center font-bold text-xl text-[#8C7A6B]">홈피 찾는 중...</div>
   if (!wall) return <div className="min-h-screen bg-[#FDF8F5] flex items-center justify-center font-bold text-xl text-[#8C7A6B]">홈피를 찾을 수 없습니다.</div>
 
@@ -275,20 +343,77 @@ export default function WallPage() {
       <div className="relative z-10 w-full flex-1 flex flex-col max-w-6xl mx-auto">
         <header className="mb-8 xl:mb-12 bg-white p-6 md:p-8 rounded-[2rem] w-full max-w-5xl mx-auto flex flex-col gap-6 shadow-sm border border-[#F3E2D5]">
         <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-center justify-between">
-          <div className="space-y-2 flex-1">
-            <div className="flex items-center gap-3">
-              <h1 className="text-3xl md:text-4xl font-extrabold text-gray-900 dark:text-gray-100">{wall.title}</h1>
+          <div className="flex items-start sm:items-center gap-5 flex-1">
+            {/* 방장 프로필 사진 (레트로 미니홈피 액자 스타일) */}
+            <div className="shrink-0 relative mt-2 sm:mt-0">
+              {wall.profile_image_url ? (
+                <div className="w-20 h-20 md:w-24 md:h-24 bg-white p-1.5 shadow-md border border-[#F3E2D5] rounded-xl rotate-[-2deg] hover:rotate-0 transition-transform cursor-pointer relative group">
+                  <div className="w-full h-full relative overflow-hidden rounded-lg">
+                    <img src={wall.profile_image_url} alt="Profile" className="w-full h-full object-cover" />
+                  </div>
+                  <div className="absolute -bottom-2 -right-2 bg-[#E87A5D] text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">방장 찰칵! 📸</div>
+                </div>
+              ) : (
+                <div className="w-20 h-20 md:w-24 md:h-24 bg-white p-1.5 shadow-md border border-[#F3E2D5] rounded-xl rotate-[-2deg] flex items-center justify-center">
+                  <div className="w-full h-full bg-[#FFF5F0] rounded-lg border-2 border-dashed border-[#FADCC8] flex items-center justify-center text-3xl">🐣</div>
+                </div>
+              )}
+              {/* Photo & BGM Edit Button */}
               <button 
-                onClick={handleDeleteWall}
-                className="text-xs text-gray-400 hover:text-red-500 transition-colors bg-gray-100 hover:bg-red-50 px-2 py-1 rounded-md border border-gray-200 hover:border-red-200"
-                title="홈피 폐쇄하기"
+                onClick={() => {
+                  setProfileAdminPassword('')
+                  setProfileImageFile(null)
+                  setProfileBgmUrl(wall.bgm_url || '')
+                  setIsProfileModalOpen(true)
+                }}
+                className="absolute -top-3 -right-3 bg-white border border-[#E8D9C8] text-[10px] sm:text-xs rounded-full p-1.5 sm:px-3 sm:py-1 shadow-sm hover:bg-[#FFF5F0] hover:text-[#E87A5D] transition-colors z-20 font-bold flex items-center justify-center opacity-80 hover:opacity-100"
+                title="설정 변경"
               >
-                🗑️ 폐쇄
+                ✏️
               </button>
             </div>
-            {wall.description && <p className="text-sm md:text-base text-gray-700 dark:text-gray-300 max-w-2xl">{wall.description}</p>}
-            <div className="mt-2 text-sm font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 inline-block px-3 py-1 rounded-full">
-              총 {postits.length}개의 메모가 있어요
+            
+            <div className="space-y-2 flex-1">
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-3xl md:text-4xl font-extrabold text-[#5C4D43] tracking-tight">{wall.title}</h1>
+                {wall.bgm_url && getYouTubeId(wall.bgm_url) ? (
+                  <div className="hidden sm:flex items-center bg-[#FFF5F0] border border-[#FADCC8] px-3 py-1 rounded-full shadow-sm gap-2">
+                    <span className="text-sm font-bold text-[#D96B4D] animate-pulse">🎵 BGM</span>
+                    <iframe 
+                      title="bgm"
+                      width="120" 
+                      height="30" 
+                      src={`https://www.youtube.com/embed/${getYouTubeId(wall.bgm_url)}?autoplay=1&loop=1&playlist=${getYouTubeId(wall.bgm_url)}`} 
+                      frameBorder="0" 
+                      allow="autoplay; encrypted-media" 
+                      className="rounded-md opacity-80 hover:opacity-100 transition-opacity"
+                    />
+                  </div>
+                ) : (
+                  <button 
+                    onClick={() => {
+                      setProfileAdminPassword('')
+                      setProfileImageFile(null)
+                      setProfileBgmUrl(wall.bgm_url || '')
+                      setIsProfileModalOpen(true)
+                    }}
+                    className="text-xs sm:text-sm font-bold text-[#A69383] border-2 border-dashed border-[#E8D9C8] rounded-full px-3 py-1.5 hover:text-[#D96B4D] hover:border-[#FADCC8] hover:bg-[#FFF5F0] transition-colors flex items-center gap-1.5 shadow-sm"
+                  >
+                    🎵 음악 추가하기
+                  </button>
+                )}
+                <button 
+                  onClick={handleDeleteWall}
+                  className="text-xs text-[#A69383] hover:text-red-500 transition-colors bg-[#FFFBF9] hover:bg-red-50 px-2 py-1 rounded-md border border-[#E8D9C8] hover:border-red-200"
+                  title="홈피 폐쇄하기"
+                >
+                  🗑️ 폐쇄
+                </button>
+              </div>
+              {wall.description && <p className="text-sm md:text-base text-[#8C7A6B] max-w-2xl font-medium leading-relaxed">{wall.description}</p>}
+              <div className="mt-2 text-sm font-bold text-[#D96B4D] bg-[#FFF5F0] border border-[#FADCC8] inline-block px-3 py-1 rounded-xl shadow-sm">
+                총 {postits.length}개의 귀여운 메모가 있어요 💌
+              </div>
             </div>
           </div>
           
@@ -466,6 +591,77 @@ export default function WallPage() {
                   className="px-8 py-3.5 rounded-xl font-extrabold bg-[#E87A5D] hover:bg-[#D96B4D] text-white shadow-sm transition-all hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50"
                 >
                   {isSubmitting ? '처리 중...' : (isEditMode ? '수정 완료' : '등록하기')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Edit Modal */}
+      {isProfileModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm transition-opacity">
+          <div className="bg-white w-full max-w-sm rounded-[2rem] p-8 shadow-2xl relative animate-in fade-in zoom-in-95 duration-200 border-2 border-[#E8D9C8]">
+            <h2 className="text-xl font-black mb-6 text-[#5C4D43]">
+              📸 방장 프로필 설정
+            </h2>
+            <form className="space-y-4">
+              <div>
+                <label className="text-sm font-bold mb-1.5 block text-gray-700">새 사진 선택 (선택)</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setProfileImageFile(e.target.files?.[0] || null)}
+                  className="w-full px-2 py-2 rounded-xl border-2 border-dashed border-[#FADCC8] focus:border-[#E87A5D] focus:ring-0 bg-white placeholder-[#C4B2A3] text-[#5C4D43] transition-colors font-medium text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-[#FFF5F0] file:text-[#E87A5D] hover:file:bg-[#FADCC8] hover:border-[#E87A5D] cursor-pointer"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-bold mb-1.5 block text-gray-700">BGM 링크 (유튜브)</label>
+                <input
+                  type="text"
+                  value={profileBgmUrl}
+                  onChange={(e) => setProfileBgmUrl(e.target.value)}
+                  className="w-full p-3.5 rounded-2xl border border-gray-200 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-blue-500/50 transition-all font-medium text-sm"
+                  placeholder="예: https://youtu.be/..."
+                />
+              </div>
+              <div>
+                <label className="text-sm font-bold mb-1.5 block text-gray-700">방장 비밀번호 *</label>
+                <input
+                  type="password"
+                  required
+                  value={profileAdminPassword}
+                  onChange={(e) => setProfileAdminPassword(e.target.value)}
+                  className="w-full p-3.5 rounded-2xl border border-gray-200 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-blue-500/50 transition-all font-medium text-sm"
+                  placeholder="방장 확인을 위해 입력"
+                />
+              </div>
+              
+              <div className="flex flex-col gap-2 mt-8 pt-4">
+                <button
+                  type="button"
+                  onClick={(e) => handleUpdateProfileImage(e, false)}
+                  disabled={isProfileSubmitting || !profileAdminPassword}
+                  className="w-full py-3.5 rounded-xl font-extrabold bg-[#E87A5D] hover:bg-[#D96B4D] text-white shadow-sm transition-all hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50"
+                >
+                  {isProfileSubmitting ? '처리 중...' : '설정 저장하기'}
+                </button>
+                {wall?.profile_image_url && (
+                  <button
+                    type="button"
+                    onClick={(e) => handleUpdateProfileImage(e, true)}
+                    disabled={isProfileSubmitting || !profileAdminPassword}
+                    className="w-full py-3.5 rounded-xl font-bold bg-white border border-red-200 text-red-500 hover:bg-red-50 transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    사진 삭제하기
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsProfileModalOpen(false)}
+                  className="w-full py-3.5 rounded-xl font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all active:scale-95"
+                >
+                  취소
                 </button>
               </div>
             </form>

@@ -80,3 +80,43 @@ alter publication supabase_realtime add table postits;
 -- (선택) 만약 위 오류가 계속 뜬다면 깔끔하게 A 구문으로 싹 다 지운 뒤 아래 명령어를 실행해주세요.
 -- ALTER TABLE walls ADD COLUMN password TEXT NULL;
 -- ALTER TABLE walls ADD COLUMN admin_password TEXT NULL;
+
+-- ==========================================
+-- 6. [신규 추가] 방장 프로필 이미지 업로드 기능 추가
+-- ==========================================
+
+-- A. 방장 프로필 사진 URL을 저장할 컬럼 추가
+-- (Supabase SQL Editor에서 이 명령을 실행해주세요)
+ALTER TABLE walls ADD COLUMN IF NOT EXISTS profile_image_url TEXT NULL;
+
+-- B. 이미지 저장을 위한 공개 스토리지 버킷 생성 ('walls' 버킷)
+-- (Supabase SQL Editor에서 이 명령을 실행해주세요)
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('walls', 'walls', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- C. walls 버킷에 대한 정책(Policy) 추가 (누구나 조회, 누구나 업로드 가능)
+-- 조회 권한
+CREATE POLICY "Anyone can view walls bucket" 
+ON storage.objects FOR SELECT 
+USING (bucket_id = 'walls');
+
+-- 생성/업로드 권한
+CREATE POLICY "Anyone can upload to walls bucket" 
+ON storage.objects FOR INSERT 
+WITH CHECK (bucket_id = 'walls');
+
+-- 삭제/수정 권한 (테스트/자유 운영용)
+CREATE POLICY "Anyone can update/delete walls bucket" 
+ON storage.objects FOR UPDATE 
+USING (bucket_id = 'walls');
+
+CREATE POLICY "Anyone can delete walls bucket" 
+ON storage.objects FOR DELETE 
+USING (bucket_id = 'walls');
+
+-- ==========================================
+-- 7. [신규 추가] 배경음악(유튜브) URL 컬럼 추가
+-- ==========================================
+-- (Supabase SQL Editor에서 아래 명령을 실행해주세요)
+ALTER TABLE walls ADD COLUMN IF NOT EXISTS bgm_url TEXT NULL;

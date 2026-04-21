@@ -9,14 +9,18 @@ type WallType = {
   id: string;
   title: string;
   description: string;
+  profile_image_url?: string;
+  bgm_url?: string;
   created_at: string;
 }
 
 export default function Home() {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const [bgmUrl, setBgmUrl] = useState('')
   const [password, setPassword] = useState('')
   const [adminPassword, setAdminPassword] = useState('')
+  const [profileImage, setProfileImage] = useState<File | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [recentWalls, setRecentWalls] = useState<WallType[]>([])
   const router = useRouter()
@@ -42,13 +46,33 @@ export default function Home() {
     }
     setIsLoading(true)
 
+    let profileImageUrl = null;
+    if (profileImage) {
+      const fileExt = profileImage.name.split('.').pop()
+      const fileName = `${Math.random()}.${fileExt}`
+      const filePath = `profile_${Date.now()}_${fileName}`
+
+      const { error: uploadError } = await supabase.storage.from('walls').upload(filePath, profileImage)
+      if (!uploadError) {
+        const { data: { publicUrl } } = supabase.storage.from('walls').getPublicUrl(filePath)
+        profileImageUrl = publicUrl
+      } else {
+        console.error('Image upload failed:', uploadError)
+        alert('이미지 업로드에 실패했습니다. Supabase의 Storage 설정(버킷 생성 및 권한)을 확인해주세요!')
+        setIsLoading(false)
+        return
+      }
+    }
+
     const { data, error } = await supabase
       .from('walls')
       .insert([{ 
         title, 
         description, 
         password: password || null, // 선택이므로 입력 안 하면 null
-        admin_password: adminPassword
+        admin_password: adminPassword,
+        profile_image_url: profileImageUrl,
+        bgm_url: bgmUrl || null
       }])
       .select()
       .single()
@@ -97,8 +121,15 @@ export default function Home() {
                 {recentWalls.map((w) => (
                   <Link key={w.id} href={`/wall/${w.id}`}>
                     <div className="flex flex-col h-40 p-5 rounded-2xl bg-[#FFFBF9] border-2 border-dashed border-[#E8D9C8] hover:border-[#E87A5D] hover:bg-[#FFF5F0] hover:-translate-y-1 transition-all cursor-pointer group shadow-sm">
-                      <h3 className="font-extrabold text-[#5C4D43] text-lg truncate group-hover:text-[#E87A5D] tracking-tight">{w.title}</h3>
-                      <p className="text-sm text-[#A69383] mt-2 line-clamp-3 leading-relaxed flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        {w.profile_image_url ? (
+                          <img src={w.profile_image_url} alt="Profile" className="w-10 h-10 rounded-lg object-cover border-2 border-[#FADCC8] shadow-sm flex-shrink-0" />
+                        ) : (
+                          <div className="w-10 h-10 rounded-lg bg-[#F3E2D5] border-2 border-[#FADCC8] flex items-center justify-center text-lg flex-shrink-0 shadow-sm">🐣</div>
+                        )}
+                        <h3 className="font-extrabold text-[#5C4D43] text-lg truncate group-hover:text-[#E87A5D] tracking-tight">{w.title}</h3>
+                      </div>
+                      <p className="text-sm text-[#A69383] mt-1 line-clamp-2 leading-relaxed flex-1">
                         {w.description || "이 홈피에는 어떤 이야기들이 숨어있을까요?"}
                       </p>
                       <div className="text-xs text-[#C4B2A3] mt-auto font-bold tracking-wide group-hover:text-[#E87A5D] transition-colors">
@@ -137,6 +168,25 @@ export default function Home() {
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl border-2 border-[#FADCC8] focus:border-[#E87A5D] focus:ring-0 bg-white placeholder-[#C4B2A3] text-[#5C4D43] transition-colors h-24 resize-none font-medium text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-[#D96B4D] mb-1 pl-1">방장 프로필 찰칵! 📸 (선택)</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setProfileImage(e.target.files?.[0] || null)}
+                  className="w-full px-2 py-2 rounded-xl border-2 border-dashed border-[#FADCC8] focus:border-[#E87A5D] focus:ring-0 bg-white placeholder-[#C4B2A3] text-[#5C4D43] transition-colors font-medium text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-[#FFF5F0] file:text-[#E87A5D] hover:file:bg-[#FADCC8] hover:border-[#E87A5D] cursor-pointer"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-[#D96B4D] mb-1 pl-1">BGM (유튜브 링크) 🎵 (선택)</label>
+                <input
+                  type="text"
+                  placeholder="예: https://youtu.be/..."
+                  value={bgmUrl}
+                  onChange={(e) => setBgmUrl(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border-2 border-[#FADCC8] focus:border-[#E87A5D] focus:ring-0 bg-white placeholder-[#C4B2A3] text-[#5C4D43] transition-colors font-medium text-xs"
                 />
               </div>
               <div>
