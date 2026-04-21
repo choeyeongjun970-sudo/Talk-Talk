@@ -282,7 +282,7 @@ export default function WallPage() {
     if (error || !data || data.length === 0) {
       alert('프로필 변경에 실패했습니다. DB 접근 권한(RLS) 설정을 확인해주세요!')
     } else {
-      setWall({ ...wall, profile_image_url: newProfileUrl, bgm_url: profileBgmUrl || '' })
+      setWall({ ...wall, profile_image_url: newProfileUrl || undefined, bgm_url: profileBgmUrl || '' })
       setIsProfileModalOpen(false)
       setProfileImageFile(null)
       setProfileAdminPassword('')
